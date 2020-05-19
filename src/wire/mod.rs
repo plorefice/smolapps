@@ -6,3 +6,6 @@ Refer to the [module-level documentation] in `smoltcp` for additional details.
 
 #[cfg(feature = "sntp")]
 pub(crate) mod sntp;
+
+#[cfg(feature = "tftp")]
+pub(crate) mod tftp;

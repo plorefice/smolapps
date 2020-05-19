@@ -24,6 +24,7 @@ env_logger = "0.7.1"
 [features]
 default = ["ipv4"] # bare minimum to allow smoltcp compilation
 sntp = ["smoltcp/socket-udp"]
+tftp = ["smoltcp/socket-udp"]
 ipv4 = ["smoltcp/proto-ipv4"]
 
 # For test harness
