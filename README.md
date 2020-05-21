@@ -8,8 +8,8 @@ Heap allocations (if at all present) will be reduced to a minimum, and will alwa
 
 The following protocols are implemented at this time:
 
-* Simple Network Time Protocol (**SNTPv4**)
-* Trivial File Transfer Protocol (**TFTP**)
+* Simple Network Time Protocol (**SNTPv4**, client only)
+* Trivial File Transfer Protocol (**TFTP**, server only)
 
 [`smoltcp`]: https://github.com/smoltcp-rs/smoltcp
 
