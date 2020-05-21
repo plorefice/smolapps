@@ -1,5 +1,8 @@
 # smolapps
 
+[![crates.io badge](https://img.shields.io/crates/v/smolapps.svg)](https://crates.io/crates/smolapps)
+[![docs.rs badge](https://docs.rs/smolapps/badge.svg)](https://docs.rs/smolapps)
+
 > Collection of application-layer protocols built on top of [`smoltcp`].
 
 This crate aims to follow the same guinding principles of `smoltcp`: simplicity and robustness.
