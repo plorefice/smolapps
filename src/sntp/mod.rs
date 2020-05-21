@@ -42,10 +42,10 @@ impl Client {
     /// # Usage
     ///
     /// ```rust
-    /// use sntp::Client;
-    /// use sntp::net::socket::{SocketSet, UdpSocketBuffer, UdpPacketMetadata};
-    /// use sntp::net::time::Instant;
-    /// use sntp::net::wire::IpAddress;
+    /// use smolapps::sntp::Client;
+    /// use smolapps::net::socket::{SocketSet, UdpSocketBuffer, UdpPacketMetadata};
+    /// use smolapps::net::time::Instant;
+    /// use smolapps::net::wire::IpAddress;
     ///
     /// let mut sockets_entries: [_; 1] = Default::default();
     /// let mut sockets = SocketSet::new(&mut sockets_entries[..]);

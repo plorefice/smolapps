@@ -19,28 +19,46 @@ const RETRY_TIMEOUT: Duration = Duration { millis: 200 };
 const TFTP_PORT: u16 = 69;
 
 /// An abstraction over a filesystem representation containing files that implement [`Handle`].
+///
+/// This trait does not impose any restriction on the filesystem hierarchy:
+/// it is up to the implementors to define, if necessary, path separators and nesting levels.
+///
+/// [`Handle`]: trait.Handle.html
 pub trait Filesystem {
     /// The `Handle` type used by this filesystem.
     type Handle: Handle;
 
-    /// Attempts to open a file in read-only mode if `write` is `false`,
+    /// Attempts to open a file in read-only mode if `write_mode` is `false`,
     /// otherwise in read-write mode.
+    ///
+    /// The `filename` contained in the request packet is provided as-is: no modifications
+    /// are applied besides stripping the NULL terminator.
     fn open(&mut self, filename: &str, write_mode: bool) -> Result<Self::Handle, ()>;
 
     /// Closes the file handle, flushing all pending changes to disk if necessary.
     fn close(&mut self, handle: Self::Handle);
 }
 
-/// An open file handle returned by a `Filesystem::open()` operation.
+/// An open file handle returned by a [`Filesystem::open()`] operation.
+///
+/// [`Filesystem::open()`]: trait.Filesystem.html#tymethod.open
 pub trait Handle {
     /// Pulls some bytes from this handle into the specified buffer, returning how many bytes were read.
+    ///
+    /// `buf` is guaranteed to be exactly 512 bytes long, the maximum packet size allowed by the protocol.
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, ()>;
 
     /// Writes a buffer into this handle's buffer, returning how many bytes were written.
+    ///
+    /// `buf` can be anywhere from 0 to 512 bytes long.
     fn write(&mut self, buf: &[u8]) -> Result<usize, ()>;
 }
 
 /// TFTP server.
+///
+/// You must call `Server::poll()` after `Interface::poll()` to handle packed transmission
+/// and reception. File errors are handled internally by relaying an error packet to the client
+/// and terminating the transfer, if necessary.
 pub struct Server<FS: Filesystem> {
     udp_handle: SocketHandle,
     filesystem: FS,
@@ -58,6 +76,7 @@ struct Transfer<H> {
     last_data: [u8; 512],
     last_len: usize,
 
+    // Used to implement a retry mechanism
     retries: u8,
     timeout: Instant,
 }
@@ -67,6 +86,75 @@ where
     FS: Filesystem,
 {
     /// Creates a TFTP server, serving files from the specified `filesystem`.
+    ///
+    /// # Usage
+    ///
+    /// ```rust
+    /// use smolapps::tftp::{Filesystem, Handle, Server};
+    /// use smolapps::net::socket::{SocketSet, UdpSocketBuffer, UdpPacketMetadata};
+    /// use smolapps::net::time::Instant;
+    /// use smolapps::net::wire::IpAddress;
+    /// use std::io::{Read, Write};
+    ///
+    /// struct RootFilesystem;
+    ///
+    /// impl Filesystem for RootFilesystem {
+    ///     type Handle = File;
+    ///     /* ... */
+    /// #
+    /// #    fn open(&mut self, filename: &str, write_mode: bool) -> Result<Self::Handle, ()> {
+    /// #        std::fs::OpenOptions::new()
+    /// #            .read(true)
+    /// #            .write(write_mode)
+    /// #            .open(filename)
+    /// #            .map(File)
+    /// #            .map_err(|_| ())
+    /// #    }
+    /// #
+    /// #    fn close(&mut self, mut handle: Self::Handle) {
+    /// #        handle.0.flush().ok();
+    /// #    }
+    /// }
+    ///
+    /// struct File(std::fs::File);
+    ///
+    /// impl Handle for File {
+    ///     /* ... */
+    /// #    fn read(&mut self, buf: &mut [u8]) -> Result<usize, ()> {
+    /// #        self.0.read(buf).map_err(|_| ())
+    /// #    }
+    /// #
+    /// #    fn write(&mut self, buf: &[u8]) -> Result<usize, ()> {
+    /// #        self.0.write(buf).map_err(|_| ())
+    /// #    }
+    /// }
+    ///
+    /// let mut sockets_entries: [_; 1] = Default::default();
+    /// let mut sockets = SocketSet::new(&mut sockets_entries[..]);
+    ///
+    /// let mut tftp_rx_storage: [u8; 1048] = [0; 1048];
+    /// let mut tftp_rx_metadata: [_; 2] = [UdpPacketMetadata::EMPTY; 2];
+    ///
+    /// let mut tftp_tx_storage: [u8; 1048] = [0; 1048];
+    /// let mut tftp_tx_metadata: [_; 2] = [UdpPacketMetadata::EMPTY; 2];
+    ///
+    /// let tftp_rx_buffer = UdpSocketBuffer::new(
+    ///     &mut tftp_rx_metadata[..],
+    ///     &mut tftp_rx_storage[..]
+    /// );
+    /// let tftp_tx_buffer = UdpSocketBuffer::new(
+    ///     &mut tftp_tx_metadata[..],
+    ///     &mut tftp_tx_storage[..],
+    /// );
+    ///
+    /// let mut tftp = Server::new(
+    ///     &mut sockets,
+    ///     tftp_rx_buffer,
+    ///     tftp_tx_buffer,
+    ///     RootFilesystem,
+    ///     Instant::from_secs(0),
+    /// );
+    /// ```
     pub fn new<'a, 'b, 'c>(
         sockets: &mut SocketSet<'a, 'b, 'c>,
         rx_buffer: UdpSocketBuffer<'b, 'c>,
