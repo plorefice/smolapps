@@ -9,6 +9,7 @@ Heap allocations (if at all present) will be reduced to a minimum, and will alwa
 The following protocols are implemented at this time:
 
 * Simple Network Time Protocol (**SNTPv4**)
+* Trivial File Transfer Protocol (**TFTP**)
 
 [`smoltcp`]: https://github.com/smoltcp-rs/smoltcp
 
@@ -48,7 +49,8 @@ For bare-metal examples, refer to the documentation and the [loopback example] o
 
 The following features can be enabled at the crate level and are _disabled_ by default:
 
-* `sntp` to enable compilation the SNTP client
+* `sntp` to enable compilation of the SNTP client
+* `tftp` to enable compilation of the TFTP server
 
 ## License
 
