@@ -1,29 +1,12 @@
 /*! Example of using the SNTP client to obtain the current timestamp from an actual time server.
 
-This example only works on Linux for simplicity. Before running the example,
-you need to create a TAP interface with Internet access usable by non-privileged users.
+This example only works on Linux. See the documentation for a step-by-step guide
+on how to setup your machine to run this example.
 
-To spawn a TAP interface named `tap0`, run the following commands:
-
-```no_rust
-sudo ip tuntap add name tap0 mode tap user $USER
-sudo ip link set tap0 up
-sudo ip addr add 192.168.69.100/24 dev tap0
-```
-
-To forward IPv4 traffic to/from the interface, run:
+Finally, run the example with:
 
 ```no_rust
-sudo iptables -t nat -A POSTROUTING -s 192.168.69.0/24 -j MASQUERADE
-sudo sysctl net.ipv4.ip_forward=1
-```
-
-Adjust the interface IP appropriately if you happen to already be on a 192.168.69.0/24 network.
-
-Finally, run the example:
-
-```no_rust
-cargo run --example client --features tap
+cargo run --example sntp --features "sntp tap"
 ```
 
 You should see something like `SNTP timestamp received: 1589793181` printed to stdout.

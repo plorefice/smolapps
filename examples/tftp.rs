@@ -6,7 +6,7 @@ on how to setup your machine to run this example.
 Finally, run the example with:
 
 ```no_rust
-cargo run --example client --features tap
+cargo run --example tftp --features "tftp tap"
 ```
 
 You should now be able to connect to `192.168.69.1:69` using a TFTP client
