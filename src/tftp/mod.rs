@@ -143,6 +143,7 @@ where
                     Repr::ReadRequest { filename, .. } | Repr::WriteRequest { filename, .. } => {
                         // Multiple connections not supported
                         if self.transfer.is_some() {
+                            net_debug!("tftp: multiple connections requested");
                             return self.send_error(
                                 &mut *socket,
                                 ErrorCode::AccessViolation,
@@ -154,6 +155,7 @@ where
                         let handle = match self.filesystem.open(filename, is_write) {
                             Ok(handle) => handle,
                             Err(_) => {
+                                net_debug!("tftp: unable to open requested file");
                                 return self.send_error(
                                     &mut *socket,
                                     ErrorCode::FileNotFound,
@@ -255,7 +257,7 @@ where
                                 );
                             }
 
-                            if xfer.last_len != 512 {
+                            if xfer.last_len == 512 {
                                 xfer.block_num += 1;
                                 self.send_data(&mut *socket)?;
                             } else {
@@ -274,8 +276,8 @@ where
 
                 Ok(())
             }
-            Err(Error::Exhausted) if now >= self.next_poll => {
-                if socket.can_send() {
+            Err(Error::Exhausted) => {
+                if socket.can_send() && now >= self.next_poll {
                     self.process_timeout(&mut socket, now)?;
                 }
                 Ok(())
@@ -290,6 +292,7 @@ where
                 xfer.retries += 1;
                 self.resend_data(socket)?;
             } else {
+                net_debug!("tftp: connection timeout");
                 self.close_transfer();
             }
         }

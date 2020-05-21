@@ -33,3 +33,7 @@ tap = ["log", "smoltcp/ethernet", "smoltcp/phy-tap_interface"]
 [[example]]
 name = "sntp"
 required-features = ["sntp", "tap"]
+
+[[example]]
+name = "tftp"
+required-features = ["tftp", "tap"]
