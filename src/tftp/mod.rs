@@ -209,8 +209,17 @@ impl Server {
                             "Multiple connections not supported",
                         );
                     }
-                    (Repr::ReadRequest { filename, .. }, None)
-                    | (Repr::WriteRequest { filename, .. }, None) => {
+                    (Repr::ReadRequest { filename, mode, .. }, None)
+                    | (Repr::WriteRequest { filename, mode, .. }, None) => {
+                        if mode != Mode::Octet {
+                            return send_error(
+                                &mut *socket,
+                                ep,
+                                ErrorCode::IllegalOperation,
+                                "Only octet mode is supported",
+                            );
+                        }
+
                         // Find the first free transfer available, or allocate one if possible
                         let opt_idx =
                             transfers.iter().position(|t| t.is_none()).or_else(
@@ -283,7 +292,7 @@ impl Server {
                             &mut *socket,
                             ep,
                             ErrorCode::AccessViolation,
-                            "Data packet wihtout active transfer",
+                            "Data packet without active transfer",
                         );
                     }
                     (Repr::Data { block_num, data }, Some(idx)) => {
