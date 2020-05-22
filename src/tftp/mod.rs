@@ -59,10 +59,6 @@ pub trait Handle {
 }
 
 /// TFTP server.
-///
-/// You must call `Server::serve()` after `Interface::poll()` to handle packed transmission
-/// and reception. File errors are handled internally by relaying an error packet to the client
-/// and terminating the transfer, if necessary.
 pub struct Server {
     udp_handle: SocketHandle,
     next_poll: Instant,
@@ -131,6 +127,12 @@ impl Server {
     }
 
     /// Serves files from the provided context and manages any active transfers.
+    ///
+    /// This function must be called after `Interface::poll()` to handle packed transmission
+    /// and reception. File errors are handled internally by relaying an error packet to the client
+    /// and terminating the transfer, if necessary.
+    ///
+    /// The `context` and the active `transfers` need to be persisted across calls to this function.
     pub fn serve<'a, C>(
         &mut self,
         sockets: &mut SocketSet,
@@ -140,7 +142,6 @@ impl Server {
     ) -> net::Result<()>
     where
         C: Context,
-        <C as Context>::Handle: 'a,
     {
         let mut socket = sockets.get::<UdpSocket>(self.udp_handle);
 
