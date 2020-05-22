@@ -45,7 +45,7 @@ pub enum Mode {
 
 impl Mode {
     /// Returns the string representation of this `Mode`.
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Mode::NetAscii => "netascii",
             Mode::Octet => "octet",
@@ -158,7 +158,7 @@ impl<T: AsRef<[u8]>> Packet<T> {
 
     /// Returns the block number of this packet.
     pub fn block_number(&self) -> u16 {
-        NetworkEndian::read_u16(&self.buffer.as_ref()[field::BLOCK]).into()
+        NetworkEndian::read_u16(&self.buffer.as_ref()[field::BLOCK])
     }
 
     /// Returns the data contained in this packet.
@@ -299,36 +299,39 @@ impl<'a> Repr<'a> {
     where
         T: AsRef<[u8]> + AsMut<[u8]> + ?Sized,
     {
-        Ok(match self {
-            &Self::ReadRequest { filename, mode } => {
+        match *self {
+            Self::ReadRequest { filename, mode } => {
                 packet.set_opcode(OpCode::Read);
                 packet.set_filename_and_mode(filename, mode);
             }
-            &Self::WriteRequest { filename, mode } => {
+            Self::WriteRequest { filename, mode } => {
                 packet.set_opcode(OpCode::Write);
                 packet.set_filename_and_mode(filename, mode);
             }
-            &Self::Data { block_num, data } => {
+            Self::Data { block_num, data } => {
                 packet.set_opcode(OpCode::Data);
                 packet.set_block_number(block_num);
                 packet.set_data(data);
             }
-            &Self::Ack { block_num } => {
+            Self::Ack { block_num } => {
                 packet.set_opcode(OpCode::Ack);
                 packet.set_block_number(block_num);
             }
-            &Self::Error { code, msg } => {
+            Self::Error { code, msg } => {
                 packet.set_opcode(OpCode::Error);
                 packet.set_error_code(code);
                 packet.set_error_msg(msg);
             }
-        })
+        };
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    use std::vec;
 
     static RRQ_BYTES: [u8; 20] = [
         0x00, 0x01, 0x72, 0x66, 0x63, 0x31, 0x33, 0x35, 0x30, 0x2e, 0x74, 0x78, 0x74, 0x00, 0x6f,

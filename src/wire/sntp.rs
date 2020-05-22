@@ -132,7 +132,7 @@ impl Timestamp {
         Ok(Timestamp { sec, frac })
     }
 
-    fn emit(&self, buffer: &mut [u8]) {
+    fn emit(self, buffer: &mut [u8]) {
         NetworkEndian::write_u32(&mut buffer[0..4], self.sec);
         NetworkEndian::write_u32(&mut buffer[4..8], self.frac);
     }
@@ -494,6 +494,8 @@ impl Repr {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    use std::vec;
 
     static PACKET_BYTES: [u8; 48] = [
         0x24, 0x02, 0x00, 0xe6, 0x00, 0x00, 0x01, 0x20, 0x00, 0x00, 0x00, 0x6f, 0x50, 0x42, 0xe0,

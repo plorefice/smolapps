@@ -18,7 +18,7 @@ const MAX_REQUEST_INTERVAL: Duration = Duration {
 
 /// Number of seconds between 1970 and Feb 7, 2036 06:28:16 UTC (epoch 1).
 /// Used for NTP to Unix timestamp conversion.
-const DIFF_SEC_1970_2036: u32 = 2085978496;
+const DIFF_SEC_1970_2036: u32 = 2_085_978_496;
 
 /// IANA port for SNTP servers.
 const SNTP_PORT: u16 = 123;

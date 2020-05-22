@@ -404,7 +404,7 @@ impl Server {
                 }
                 Ok(())
             }
-            Err(e) => return Err(e),
+            Err(e) => Err(e),
         }
     }
 
