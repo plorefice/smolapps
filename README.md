@@ -9,6 +9,8 @@ This crate aims to follow the same guinding principles of `smoltcp`: simplicity 
 It is a `#![no_std]`-first crate, designed for bare-metal, real-time systems.
 Heap allocations (if at all present) will be reduced to a minimum, and will always be feature gated.
 
+**This crate is still a major WIP, and as such the API may change significantly even in patch releases.**
+
 The following protocols are implemented at this time:
 
 * Simple Network Time Protocol (**SNTPv4**, client only)
