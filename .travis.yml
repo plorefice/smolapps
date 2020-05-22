@@ -1,7 +1,6 @@
 language: rust
 matrix:
   include:
-    # Basic checks: builds, passes tests and lints
     - rust: stable
       env: FEATURES='default' MODE='build'
     - rust: stable
@@ -22,6 +21,6 @@ matrix:
       rust: stable
       env: FEATURES='default' MODE='build'
 before_script:
-  - if [ "$MODE" == "clippy" ]; then cargo install clippy; fi
+  - if [ "$MODE" == "clippy" ]; then rustup component add clippy-preview; fi
 script:
   - cargo $MODE --no-default-features --features "$FEATURES" $ARGS
