@@ -48,11 +48,11 @@ The following features can be enabled at the crate level:
 
 ## `sntp`
 
-Compiles the SNTP protocol and client implementation. It has a dependency on `socket-udp`. Disabled by default.
+Compiles the SNTP protocol and client implementation. It has a dependency on `socket-udp`. Enabled by default.
 
 ## `tftp`
 
-Compiles the TFTP protocol and server implementation. It has a dependency on `socket-udp`. Disabled by default.
+Compiles the TFTP protocol and server implementation. It has a dependency on `socket-udp`. Enabled by default.
 */
 
 #![deny(warnings)]
@@ -60,8 +60,7 @@ Compiles the TFTP protocol and server implementation. It has a dependency on `so
 #![deny(unsafe_code)]
 #![no_std]
 
-#[cfg(any(feature = "std"))]
-#[macro_use]
+#[cfg(any(test, feature = "std"))]
 extern crate std;
 
 #[cfg(feature = "log")]

@@ -33,10 +33,10 @@ and the [loopback example] of smoltcp.
 
 ## Features
 
-The following features can be enabled at the crate level and are _disabled_ by default:
+The following features can be enabled at the crate level and are _enabled_ by default:
 
-* `sntp` to enable compilation of the SNTP client
-* `tftp` to enable compilation of the TFTP server
+* `sntp` enables compilation of the SNTP client
+* `tftp` enables compilation of the TFTP server
 
 ## License
 
