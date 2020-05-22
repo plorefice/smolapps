@@ -8,6 +8,7 @@ use crate::net::{
     Error,
 };
 use crate::wire::tftp::*;
+use managed::ManagedSlice;
 
 /// Maximum number of retransmissions attempted by the server before giving up.
 const MAX_RETRIES: u8 = 10;
@@ -18,14 +19,17 @@ const RETRY_TIMEOUT: Duration = Duration { millis: 200 };
 /// IANA port for TFTP servers.
 const TFTP_PORT: u16 = 69;
 
-/// An abstraction over a filesystem representation containing files that implement [`Handle`].
+/// The context over which the [`Server`] will operate.
 ///
-/// This trait does not impose any restriction on the filesystem hierarchy:
-/// it is up to the implementors to define, if necessary, path separators and nesting levels.
+/// The context allows the [`Server`] to open and close [`Handle`]s to files.
+/// It does not impose any restriction on the context hierarchy: it could be a flat
+/// structure or implement a directory tree. It is up to the implementors to define,
+/// if required, the concepts of path separators and nesting levels.
 ///
+/// [`Server`]: struct.Server.html
 /// [`Handle`]: trait.Handle.html
-pub trait Filesystem {
-    /// The `Handle` type used by this filesystem.
+pub trait Context {
+    /// The `Handle` type used by this `Context`.
     type Handle: Handle;
 
     /// Attempts to open a file in read-only mode if `write_mode` is `false`,
@@ -39,9 +43,9 @@ pub trait Filesystem {
     fn close(&mut self, handle: Self::Handle);
 }
 
-/// An open file handle returned by a [`Filesystem::open()`] operation.
+/// An open file handle returned by a [`Context::open()`] operation.
 ///
-/// [`Filesystem::open()`]: trait.Filesystem.html#tymethod.open
+/// [`Context::open()`]: trait.Context.html#tymethod.open
 pub trait Handle {
     /// Pulls some bytes from this handle into the specified buffer, returning how many bytes were read.
     ///
@@ -56,78 +60,26 @@ pub trait Handle {
 
 /// TFTP server.
 ///
-/// You must call `Server::poll()` after `Interface::poll()` to handle packed transmission
+/// You must call `Server::serve()` after `Interface::poll()` to handle packed transmission
 /// and reception. File errors are handled internally by relaying an error packet to the client
 /// and terminating the transfer, if necessary.
-pub struct Server<FS: Filesystem> {
+pub struct Server {
     udp_handle: SocketHandle,
-    filesystem: FS,
-    transfer: Option<Transfer<FS::Handle>>,
     next_poll: Instant,
 }
 
-struct Transfer<H> {
-    handle: H,
-    ep: IpEndpoint,
-
-    is_write: bool,
-    block_num: u16,
-    // FIXME: I'd reeeally love to avoid a potential stack allocation this big :\
-    last_data: [u8; 512],
-    last_len: usize,
-
-    // Used to implement a retry mechanism
-    retries: u8,
-    timeout: Instant,
-}
-
-impl<FS> Server<FS>
-where
-    FS: Filesystem,
-{
-    /// Creates a TFTP server, serving files from the specified `filesystem`.
+impl Server {
+    /// Creates a TFTP server.
+    ///
+    /// A new socket will be allocated and added to the provided `SocketSet`.
     ///
     /// # Usage
     ///
     /// ```rust
-    /// use smolapps::tftp::{Filesystem, Handle, Server};
+    /// use smolapps::tftp::Server;
     /// use smolapps::net::socket::{SocketSet, UdpSocketBuffer, UdpPacketMetadata};
     /// use smolapps::net::time::Instant;
     /// use smolapps::net::wire::IpAddress;
-    /// use std::io::{Read, Write};
-    ///
-    /// struct RootFilesystem;
-    ///
-    /// impl Filesystem for RootFilesystem {
-    ///     type Handle = File;
-    ///     /* ... */
-    /// #
-    /// #    fn open(&mut self, filename: &str, write_mode: bool) -> Result<Self::Handle, ()> {
-    /// #        std::fs::OpenOptions::new()
-    /// #            .read(true)
-    /// #            .write(write_mode)
-    /// #            .open(filename)
-    /// #            .map(File)
-    /// #            .map_err(|_| ())
-    /// #    }
-    /// #
-    /// #    fn close(&mut self, mut handle: Self::Handle) {
-    /// #        handle.0.flush().ok();
-    /// #    }
-    /// }
-    ///
-    /// struct File(std::fs::File);
-    ///
-    /// impl Handle for File {
-    ///     /* ... */
-    /// #    fn read(&mut self, buf: &mut [u8]) -> Result<usize, ()> {
-    /// #        self.0.read(buf).map_err(|_| ())
-    /// #    }
-    /// #
-    /// #    fn write(&mut self, buf: &[u8]) -> Result<usize, ()> {
-    /// #        self.0.write(buf).map_err(|_| ())
-    /// #    }
-    /// }
     ///
     /// let mut sockets_entries: [_; 1] = Default::default();
     /// let mut sockets = SocketSet::new(&mut sockets_entries[..]);
@@ -151,7 +103,6 @@ where
     ///     &mut sockets,
     ///     tftp_rx_buffer,
     ///     tftp_tx_buffer,
-    ///     RootFilesystem,
     ///     Instant::from_secs(0),
     /// );
     /// ```
@@ -159,7 +110,6 @@ where
         sockets: &mut SocketSet<'a, 'b, 'c>,
         rx_buffer: UdpSocketBuffer<'b, 'c>,
         tx_buffer: UdpSocketBuffer<'b, 'c>,
-        filesystem: FS,
         now: Instant,
     ) -> Self {
         let socket = UdpSocket::new(rx_buffer, tx_buffer);
@@ -169,8 +119,6 @@ where
 
         Server {
             udp_handle,
-            filesystem,
-            transfer: None,
             next_poll: now,
         }
     }
@@ -182,8 +130,18 @@ where
         self.next_poll - now
     }
 
-    /// Processes incoming packets.
-    pub fn poll(&mut self, sockets: &mut SocketSet, now: Instant) -> net::Result<()> {
+    /// Serves files from the provided context and manages any active transfers.
+    pub fn serve<'a, C>(
+        &mut self,
+        sockets: &mut SocketSet,
+        context: &mut C,
+        transfers: &mut ManagedSlice<'a, Option<Transfer<C::Handle>>>,
+        now: Instant,
+    ) -> net::Result<()>
+    where
+        C: Context,
+        <C as Context>::Handle: 'a,
+    {
         let mut socket = sockets.get::<UdpSocket>(self.udp_handle);
 
         // Bind the socket if necessary
@@ -204,8 +162,9 @@ where
                 let tftp_packet = match Packet::new_checked(data) {
                     Ok(tftp_packet) => tftp_packet,
                     Err(_) => {
-                        self.send_error(
+                        send_error(
                             &mut *socket,
+                            ep,
                             ErrorCode::AccessViolation,
                             "Packet truncated",
                         )?;
@@ -217,145 +176,198 @@ where
                 let tftp_repr = match Repr::parse(&tftp_packet) {
                     Ok(tftp_repr) => tftp_repr,
                     Err(_) => {
-                        return self.send_error(
+                        return send_error(
                             &mut *socket,
+                            ep,
                             ErrorCode::AccessViolation,
                             "Malformed packet",
                         );
                     }
                 };
 
+                // Retrieve the index of the transfer associated to the remote endpoint
+                let xfer_idx = transfers.iter_mut().position(|xfer| {
+                    if let Some(xfer) = xfer {
+                        if xfer.ep == ep {
+                            return true;
+                        }
+                    }
+                    false
+                });
+
                 let is_write = tftp_packet.opcode() == OpCode::Write;
 
-                match tftp_repr {
-                    Repr::ReadRequest { filename, .. } | Repr::WriteRequest { filename, .. } => {
-                        // Multiple connections not supported
-                        if self.transfer.is_some() {
-                            net_debug!("tftp: multiple connections requested");
-                            return self.send_error(
-                                &mut *socket,
-                                ErrorCode::AccessViolation,
-                                "Only one connection at a time is supported",
-                            );
-                        }
+                match (tftp_repr, xfer_idx) {
+                    (Repr::ReadRequest { .. }, Some(_)) | (Repr::WriteRequest { .. }, Some(_)) => {
+                        // Multiple connections from the same host are not supported
+                        net_debug!("tftp: multiple connection attempts from {}", ep);
 
-                        // Open file handle
-                        let handle = match self.filesystem.open(filename, is_write) {
-                            Ok(handle) => handle,
-                            Err(_) => {
-                                net_debug!("tftp: unable to open requested file");
-                                return self.send_error(
-                                    &mut *socket,
-                                    ErrorCode::FileNotFound,
-                                    "Unable to open requested file",
-                                );
-                            }
-                        };
-
-                        // Allocate new transfer
-                        self.transfer = Some(Transfer {
-                            handle,
-                            ep,
-                            is_write,
-                            block_num: 1,
-                            last_data: [0; 512],
-                            last_len: 0,
-                            retries: 0,
-                            timeout: now + Duration::from_millis(50),
-                        });
-
-                        net_debug!(
-                            "tftp: {} request from {}",
-                            if is_write { "write" } else { "read" },
-                            ep
-                        );
-
-                        if is_write {
-                            self.send_ack(&mut *socket, 0)?;
-                        } else {
-                            self.send_data(&mut *socket)?;
-                        }
-                    }
-                    Repr::Data { .. } | Repr::Ack { .. } if self.transfer.is_none() => {
-                        // Data request on unconnected socket
-                        if self.transfer.is_none() {
-                            return self.send_error(
-                                &mut *socket,
-                                ErrorCode::AccessViolation,
-                                "No connection",
-                            );
-                        }
-                    }
-                    Repr::Data { block_num, data } => {
-                        if let Some(xfer) = &mut self.transfer {
-                            // Reset retransmission counter
-                            xfer.timeout = now + RETRY_TIMEOUT;
-                            xfer.retries = 0;
-
-                            // Make sure this is a write connection
-                            if !xfer.is_write {
-                                return self.send_error(
-                                    &mut *socket,
-                                    ErrorCode::AccessViolation,
-                                    "Not a write connection",
-                                );
-                            }
-
-                            let last_block = data.len() < 512;
-
-                            // Write data to the destination file
-                            match xfer.handle.write(data) {
-                                Ok(_) => {
-                                    self.send_ack(&mut *socket, block_num)?;
-                                    if last_block {
-                                        self.close_transfer();
-                                    }
-                                }
-                                Err(_) => {
-                                    self.send_error(
-                                        &mut *socket,
-                                        ErrorCode::AccessViolation,
-                                        "Error writing file",
-                                    )?;
-                                    self.close_transfer();
-                                }
-                            }
-                        }
-                    }
-                    Repr::Ack { block_num } => {
-                        if let Some(xfer) = &mut self.transfer {
-                            // Reset retransmission counter
-                            xfer.timeout = now + RETRY_TIMEOUT;
-                            xfer.retries = 0;
-
-                            // Make sure this is a read connection
-                            if xfer.is_write {
-                                return self.send_error(
-                                    &mut *socket,
-                                    ErrorCode::AccessViolation,
-                                    "Not a read connection",
-                                );
-                            }
-
-                            if block_num != xfer.block_num {
-                                return self.send_error(
-                                    &mut *socket,
-                                    ErrorCode::UnknownID,
-                                    "Wrong block number",
-                                );
-                            }
-
-                            if xfer.last_len == 512 {
-                                xfer.block_num += 1;
-                                self.send_data(&mut *socket)?;
-                            } else {
-                                self.close_transfer();
-                            }
-                        }
-                    }
-                    Repr::Error { .. } => {
-                        return self.send_error(
+                        return send_error(
                             &mut *socket,
+                            ep,
+                            ErrorCode::AccessViolation,
+                            "Multiple connections not supported",
+                        );
+                    }
+                    (Repr::ReadRequest { filename, .. }, None)
+                    | (Repr::WriteRequest { filename, .. }, None) => {
+                        // Find the first free transfer available, or allocate one if possible
+                        let opt_idx =
+                            transfers.iter().position(|t| t.is_none()).or_else(
+                                || match transfers {
+                                    ManagedSlice::Borrowed(_) => None,
+                                    ManagedSlice::Owned(v) => {
+                                        let idx = v.len();
+                                        v.push(None);
+                                        Some(idx)
+                                    }
+                                },
+                            );
+
+                        if let Some(idx) = opt_idx {
+                            // Open file handle
+                            let handle = match context.open(filename, is_write) {
+                                Ok(handle) => handle,
+                                Err(_) => {
+                                    net_debug!("tftp: unable to open requested file");
+                                    return send_error(
+                                        &mut *socket,
+                                        ep,
+                                        ErrorCode::FileNotFound,
+                                        "Unable to open requested file",
+                                    );
+                                }
+                            };
+
+                            // Allocate new transfer
+                            let mut xfer = Transfer {
+                                handle,
+                                ep,
+                                is_write,
+                                block_num: 1,
+                                last_data: None,
+                                last_len: 0,
+                                retries: 0,
+                                timeout: now + Duration::from_millis(50),
+                            };
+
+                            net_debug!(
+                                "tftp: {} request from {}",
+                                if is_write { "write" } else { "read" },
+                                ep
+                            );
+
+                            if is_write {
+                                xfer.send_ack(&mut *socket, 0)?;
+                            } else {
+                                xfer.send_data(&mut *socket)?;
+                            }
+
+                            // Enque transfer
+                            transfers[idx] = Some(xfer);
+                        } else {
+                            // Exhausted transfers buffer
+                            net_debug!("tftp: connections exhausted");
+
+                            return send_error(
+                                &mut *socket,
+                                ep,
+                                ErrorCode::AccessViolation,
+                                "No more available connections",
+                            );
+                        }
+                    }
+                    (Repr::Data { .. }, None) | (Repr::Ack { .. }, None) => {
+                        // Data request on unconnected socket
+                        return send_error(
+                            &mut *socket,
+                            ep,
+                            ErrorCode::AccessViolation,
+                            "Data packet wihtout active transfer",
+                        );
+                    }
+                    (Repr::Data { block_num, data }, Some(idx)) => {
+                        let xfer = transfers[idx].as_mut().unwrap();
+
+                        // Reset retransmission counter
+                        xfer.timeout = now + RETRY_TIMEOUT;
+                        xfer.retries = 0;
+
+                        // Make sure this is a write connection
+                        if !xfer.is_write {
+                            return send_error(
+                                &mut *socket,
+                                ep,
+                                ErrorCode::AccessViolation,
+                                "Not a write connection",
+                            );
+                        }
+
+                        // Unexpected packet, resend ACK for (block_num - 1)
+                        if block_num != xfer.block_num {
+                            return xfer.send_ack(&mut *socket, xfer.block_num - 1);
+                        }
+
+                        // Update block number
+                        xfer.block_num += 1;
+
+                        // Write data to the destination file
+                        match xfer.handle.write(data) {
+                            Ok(_) => {
+                                let last_block = data.len() < 512;
+
+                                // Send ACK and optionally close the transfer
+                                xfer.send_ack(&mut *socket, block_num)?;
+                                if last_block {
+                                    self.close_transfer(context, &mut transfers[idx]);
+                                }
+                            }
+                            Err(_) => {
+                                send_error(
+                                    &mut *socket,
+                                    ep,
+                                    ErrorCode::AccessViolation,
+                                    "Error writing file",
+                                )?;
+                                self.close_transfer(context, &mut transfers[idx]);
+                            }
+                        }
+                    }
+                    (Repr::Ack { block_num }, Some(idx)) => {
+                        let xfer = transfers[idx].as_mut().unwrap();
+
+                        // Reset retransmission counter
+                        xfer.timeout = now + RETRY_TIMEOUT;
+                        xfer.retries = 0;
+
+                        // Make sure this is a read connection
+                        if xfer.is_write {
+                            return send_error(
+                                &mut *socket,
+                                ep,
+                                ErrorCode::AccessViolation,
+                                "Not a read connection",
+                            );
+                        }
+
+                        // Unexpected ACK, resend previous block
+                        if block_num != xfer.block_num {
+                            return xfer.resend_data(&mut *socket);
+                        }
+
+                        // Update block number
+                        xfer.block_num += 1;
+
+                        if xfer.last_len == 512 {
+                            xfer.send_data(&mut *socket)?;
+                        } else {
+                            self.close_transfer(context, &mut transfers[idx]);
+                        }
+                    }
+                    (Repr::Error { .. }, _) => {
+                        return send_error(
+                            &mut *socket,
+                            ep,
                             ErrorCode::IllegalOperation,
                             "Unknown operation",
                         );
@@ -365,8 +377,19 @@ where
                 Ok(())
             }
             Err(Error::Exhausted) => {
+                // Nothing to receive, process outgoing packets
                 if socket.can_send() && now >= self.next_poll {
-                    self.process_timeout(&mut socket, now)?;
+                    for xfer in transfers.iter_mut() {
+                        let do_drop = if let Some(xfer) = xfer {
+                            xfer.process_timeout(&mut socket, now)?
+                        } else {
+                            false
+                        };
+
+                        if do_drop {
+                            self.close_transfer(context, xfer);
+                        }
+                    }
                 }
                 Ok(())
             }
@@ -374,49 +397,79 @@ where
         }
     }
 
-    fn process_timeout(&mut self, socket: &mut UdpSocket, now: Instant) -> net::Result<()> {
-        if let Some(xfer) = &mut self.transfer {
-            if now >= xfer.timeout && xfer.retries < MAX_RETRIES {
-                xfer.retries += 1;
-                self.resend_data(socket)?;
-            } else {
-                net_debug!("tftp: connection timeout");
-                self.close_transfer();
-            }
+    /// Terminates a transfer, releasing the handle and freeing up the transfer slot.
+    fn close_transfer<C>(&mut self, context: &mut C, xfer: &mut Option<Transfer<C::Handle>>)
+    where
+        C: Context,
+    {
+        if let Some(xfer) = xfer.take() {
+            net_debug!("tftp: closing {}", xfer.ep);
+            context.close(xfer.handle);
         }
-        Ok(())
+    }
+}
+
+/// An active TFTP transfer.
+pub struct Transfer<H> {
+    handle: H,
+    ep: IpEndpoint,
+
+    is_write: bool,
+    block_num: u16,
+    // FIXME: I'd reeeally love to avoid a potential stack allocation this big :\
+    last_data: Option<[u8; 512]>,
+    last_len: usize,
+
+    retries: u8,
+    timeout: Instant,
+}
+
+impl<H> Transfer<H>
+where
+    H: Handle,
+{
+    fn process_timeout(&mut self, socket: &mut UdpSocket, now: Instant) -> net::Result<bool> {
+        if now >= self.timeout && self.retries < MAX_RETRIES {
+            self.retries += 1;
+            self.resend_data(socket).map(|_| false)
+        } else {
+            net_debug!("tftp: connection timeout");
+            Ok(true)
+        }
     }
 
-    fn send_data(&mut self, socket: &mut UdpSocket) -> net::Result<()> {
-        if let Some(xfer) = &mut self.transfer {
-            // Read next chunk
-            xfer.last_len = match xfer.handle.read(&mut xfer.last_data[..]) {
-                Ok(n) => n,
-                Err(_) => {
-                    self.send_error(
-                        socket,
-                        ErrorCode::AccessViolation,
-                        "Error occurred while reading the file",
-                    )?;
-                    self.close_transfer();
-                    return Ok(());
-                }
-            };
-
-            self.resend_data(socket)?;
+    fn send_data(&mut self, socket: &mut UdpSocket) -> net::Result<bool> {
+        // Allocate data
+        if self.last_data.is_none() {
+            self.last_data = Some([0; 512]);
         }
-        Ok(())
+
+        // Read next chunk
+        self.last_len = match self.handle.read(&mut self.last_data.as_mut().unwrap()[..]) {
+            Ok(n) => n,
+            Err(_) => {
+                send_error(
+                    socket,
+                    self.ep,
+                    ErrorCode::AccessViolation,
+                    "Error occurred while reading the file",
+                )?;
+                return Ok(false);
+            }
+        };
+
+        self.resend_data(socket).map(|_| false)
     }
 
     fn resend_data(&mut self, socket: &mut UdpSocket) -> net::Result<()> {
-        if let Some(xfer) = &self.transfer {
-            net_trace!("tftp: sending data block #{}", xfer.block_num);
+        if let Some(last_data) = &self.last_data {
+            net_trace!("tftp: sending data block #{}", self.block_num);
 
             let data = Repr::Data {
-                block_num: xfer.block_num,
-                data: &xfer.last_data[..xfer.last_len],
+                block_num: self.block_num,
+                data: &last_data[..self.last_len],
             };
-            let payload = socket.send(data.buffer_len(), xfer.ep)?;
+            let payload = socket.send(data.buffer_len(), self.ep)?;
             let mut pkt = Packet::new_unchecked(payload);
             data.emit(&mut pkt)?;
         }
@@ -424,39 +477,25 @@ where
     }
 
     fn send_ack(&mut self, socket: &mut UdpSocket, block: u16) -> net::Result<()> {
-        if let Some(Transfer { ep, .. }) = &self.transfer {
-            net_trace!("tftp: sending ack #{}", block);
+        net_trace!("tftp: sending ack #{}", block);
 
-            let ack = Repr::Ack { block_num: block };
-            let payload = socket.send(ack.buffer_len(), *ep)?;
-            let mut pkt = Packet::new_unchecked(payload);
-            ack.emit(&mut pkt)?;
-        }
-        Ok(())
+        let ack = Repr::Ack { block_num: block };
+        let payload = socket.send(ack.buffer_len(), self.ep)?;
+        let mut pkt = Packet::new_unchecked(payload);
+        ack.emit(&mut pkt)
     }
+}
 
-    fn send_error(
-        &mut self,
-        socket: &mut UdpSocket,
-        code: ErrorCode,
-        msg: &str,
-    ) -> net::Result<()> {
-        if let Some(Transfer { ep, .. }) = &self.transfer {
-            net_debug!("tftp: {:?}, message: {}", code, msg);
+fn send_error(
+    socket: &mut UdpSocket,
+    ep: IpEndpoint,
+    code: ErrorCode,
+    msg: &str,
+) -> net::Result<()> {
+    net_debug!("tftp: {:?}, message: {}", code, msg);
 
-            let err = Repr::Error { code, msg };
-            let payload = socket.send(err.buffer_len(), *ep)?;
-            let mut pkt = Packet::new_unchecked(payload);
-            err.emit(&mut pkt)?;
-        }
-        Ok(())
-    }
-
-    fn close_transfer(&mut self) {
-        if let Some(Transfer { handle, .. }) = self.transfer.take() {
-            net_debug!("tftp: closing");
-
-            self.filesystem.close(handle);
-        }
-    }
+    let err = Repr::Error { code, msg };
+    let payload = socket.send(err.buffer_len(), ep)?;
+    let mut pkt = Packet::new_unchecked(payload);
+    err.emit(&mut pkt)
 }

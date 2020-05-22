@@ -23,7 +23,7 @@ use smolapps::{
     net::socket::{SocketSet, UdpPacketMetadata, UdpSocketBuffer},
     net::time::Instant,
     net::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address},
-    tftp::{Filesystem, Handle, Server},
+    tftp::{Context, Handle, Server},
 };
 use std::{
     collections::BTreeMap,
@@ -34,7 +34,7 @@ use std::{
 
 struct RootFilesystem;
 
-impl Filesystem for RootFilesystem {
+impl Context for RootFilesystem {
     type Handle = File;
 
     fn open(&mut self, filename: &str, write_mode: bool) -> Result<Self::Handle, ()> {
@@ -64,7 +64,7 @@ impl Handle for File {
 }
 
 fn main() {
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
+    env_logger::from_env(Env::default().default_filter_or("trace")).init();
 
     let device = TapInterface::new("tap0").unwrap();
     let fd = device.as_raw_fd();
@@ -91,16 +91,17 @@ fn main() {
         &mut sockets,
         UdpSocketBuffer::new([UdpPacketMetadata::EMPTY; 2], vec![0; 1032]),
         UdpSocketBuffer::new([UdpPacketMetadata::EMPTY; 2], vec![0; 1032]),
-        RootFilesystem,
         Instant::now(),
     );
+
+    let mut transfers = vec![].into();
 
     loop {
         let timestamp = Instant::now();
 
         iface.poll(&mut sockets, timestamp).ok();
 
-        if let Err(e) = tftp.poll(&mut sockets, timestamp) {
+        if let Err(e) = tftp.serve(&mut sockets, &mut RootFilesystem, &mut transfers, timestamp) {
             error!("TFTP error: {}", e);
         };
 
