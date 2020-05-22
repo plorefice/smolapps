@@ -1,0 +1,27 @@
+language: rust
+matrix:
+  include:
+    # Basic checks: builds, passes tests and lints
+    - rust: stable
+      env: FEATURES='default' MODE='build'
+    - rust: stable
+      env: FEATURES='default' MODE='test'
+    - rust: stable
+      env: FEATURES='default' MODE='clippy'
+    # Feature matrix
+    - rust: stable
+      env: FEATURES='smoltcp/proto-ipv4 sntp' MODE='test'
+    - rust: stable
+      env: FEATURES='smoltcp/proto-ipv4 tftp' MODE='test'
+    - rust: stable
+      env: FEATURES='smoltcp/proto-ipv4 sntp tftp' MODE='test'
+    - rust: stable
+      env: FEATURES='smoltcp/proto-ipv4 std sntp tftp' MODE='test'
+    # macOS builds
+    - os: osx
+      rust: stable
+      env: FEATURES='default' MODE='build'
+before_script:
+  - if [ "$MODE" == "clippy" ]; then cargo install clippy; fi
+script:
+  - cargo $MODE --no-default-features --features "$FEATURES" $ARGS
