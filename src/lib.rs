@@ -60,7 +60,7 @@ Compiles the TFTP protocol and server implementation. It has a dependency on `so
 #![deny(unsafe_code)]
 #![no_std]
 
-#[cfg(any(test, feature = "std"))]
+#[cfg(any(feature = "std"))]
 #[macro_use]
 extern crate std;
 

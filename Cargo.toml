@@ -29,13 +29,16 @@ sntp = ["smoltcp/socket-udp"]
 tftp = ["smoltcp/socket-udp"]
 ipv4 = ["smoltcp/proto-ipv4"]
 
+# Standard library support
+std = ["smoltcp/std", "managed/std"]
+
 # For test harness
 tap = ["log", "smoltcp/ethernet", "smoltcp/phy-tap_interface"]
 
 [[example]]
 name = "sntp"
-required-features = ["sntp", "tap"]
+required-features = ["std", "sntp", "tap"]
 
 [[example]]
 name = "tftp"
-required-features = ["tftp", "tap"]
+required-features = ["std", "tftp", "tap"]

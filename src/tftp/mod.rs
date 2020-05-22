@@ -226,6 +226,7 @@ impl Server {
                             transfers.iter().position(|t| t.is_none()).or_else(
                                 || match transfers {
                                     ManagedSlice::Borrowed(_) => None,
+                                    #[cfg(feature = "std")]
                                     ManagedSlice::Owned(v) => {
                                         let idx = v.len();
                                         v.push(None);
