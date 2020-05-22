@@ -2,6 +2,7 @@
 
 [![crates.io badge](https://img.shields.io/crates/v/smolapps.svg)](https://crates.io/crates/smolapps)
 [![docs.rs badge](https://docs.rs/smolapps/badge.svg)](https://docs.rs/smolapps)
+[![Build Status](https://travis-ci.com/plorefice/smolapps.svg?branch=master)](https://travis-ci.com/plorefice/smolapps)
 
 > Collection of application-layer protocols built on top of [`smoltcp`].
 
