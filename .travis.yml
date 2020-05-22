@@ -9,13 +9,13 @@ matrix:
       env: FEATURES='default' MODE='clippy'
     # Feature matrix
     - rust: stable
-      env: FEATURES='smoltcp/proto-ipv4 sntp' MODE='test'
+      env: FEATURES='ipv4 sntp' MODE='test'
     - rust: stable
-      env: FEATURES='smoltcp/proto-ipv4 tftp' MODE='test'
+      env: FEATURES='ipv4 tftp' MODE='test'
     - rust: stable
-      env: FEATURES='smoltcp/proto-ipv4 sntp tftp' MODE='test'
+      env: FEATURES='ipv4 sntp tftp' MODE='test'
     - rust: stable
-      env: FEATURES='smoltcp/proto-ipv4 std sntp tftp' MODE='test'
+      env: FEATURES='ipv4 sntp tftp std' MODE='test'
     # macOS builds
     - os: osx
       rust: stable

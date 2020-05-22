@@ -24,11 +24,12 @@ log = { version = "0.4.8", default-features = false, optional = true }
 env_logger = "0.7.1"
 
 [features]
-default = ["sntp", "tftp"]
+default = ["ipv4", "sntp", "tftp"]
 
 # Protocols
 sntp = ["smoltcp/socket-udp"]
 tftp = ["smoltcp/socket-udp"]
+ipv4 = ["smoltcp/proto-ipv4"]
 
 # Standard library support
 std = ["smoltcp/std", "managed/std"]
