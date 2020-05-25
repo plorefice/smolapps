@@ -519,29 +519,29 @@ mod test {
         assert_eq!(
             packet.ref_timestamp(),
             Ok(Timestamp {
-                sec: 0xe26c32f1,
-                frac: 0x0ed5fea9,
+                sec: 0xe26c_32f1,
+                frac: 0x0ed5_fea9,
             })
         );
         assert_eq!(
             packet.orig_timestamp(),
             Ok(Timestamp {
-                sec: 0x00000000,
-                frac: 0x00000000
+                sec: 0x0000_0000,
+                frac: 0x0000_0000
             })
         );
         assert_eq!(
             packet.recv_timestamp(),
             Ok(Timestamp {
-                sec: 0xe26c3511,
-                frac: 0x6a8ce647,
+                sec: 0xe26c_3511,
+                frac: 0x6a8c_e647,
             })
         );
         assert_eq!(
             packet.xmit_timestamp(),
             Ok(Timestamp {
-                sec: 0xe26c3511,
-                frac: 0x6a8df88f
+                sec: 0xe26c_3511,
+                frac: 0x6a8d_f88f
             })
         )
     }
@@ -560,20 +560,20 @@ mod test {
         packet.set_root_dispersion(0x6f);
         packet.set_ref_identifier([80, 66, 224, 2]);
         packet.set_ref_timestamp(Timestamp {
-            sec: 0xe26c32f1,
-            frac: 0x0ed5fea9,
+            sec: 0xe26c_32f1,
+            frac: 0x0ed5_fea9,
         });
         packet.set_orig_timestamp(Timestamp {
-            sec: 0x00000000,
-            frac: 0x00000000,
+            sec: 0x0000_0000,
+            frac: 0x0000_0000,
         });
         packet.set_recv_timestamp(Timestamp {
-            sec: 0xe26c3511,
-            frac: 0x6a8ce647,
+            sec: 0xe26c_3511,
+            frac: 0x6a8c_e647,
         });
         packet.set_xmit_timestamp(Timestamp {
-            sec: 0xe26c3511,
-            frac: 0x6a8df88f,
+            sec: 0xe26c_3511,
+            frac: 0x6a8d_f88f,
         });
         assert_eq!(&packet.buffer[..], &PACKET_BYTES[..]);
     }
@@ -590,20 +590,20 @@ mod test {
             root_dispersion: 0x6f,
             ref_identifier: [80, 66, 224, 2],
             ref_timestamp: Timestamp {
-                sec: 0xe26c32f1,
-                frac: 0x0ed5fea9,
+                sec: 0xe26c_32f1,
+                frac: 0x0ed5_fea9,
             },
             orig_timestamp: Timestamp {
-                sec: 0x00000000,
-                frac: 0x00000000,
+                sec: 0x0000_0000,
+                frac: 0x0000_0000,
             },
             recv_timestamp: Timestamp {
-                sec: 0xe26c3511,
-                frac: 0x6a8ce647,
+                sec: 0xe26c_3511,
+                frac: 0x6a8c_e647,
             },
             xmit_timestamp: Timestamp {
-                sec: 0xe26c3511,
-                frac: 0x6a8df88f,
+                sec: 0xe26c_3511,
+                frac: 0x6a8d_f88f,
             },
         }
     }

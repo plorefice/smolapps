@@ -107,9 +107,9 @@ fn main() {
 
         let mut timeout = tftp.next_poll(timestamp);
 
-        iface
-            .poll_delay(&sockets, timestamp)
-            .map(|sockets_timeout| timeout = sockets_timeout);
+        if let Some(sockets_timeout) = iface.poll_delay(&sockets, timestamp) {
+            timeout = sockets_timeout;
+        }
 
         phy_wait(fd, Some(timeout)).unwrap_or_else(|e| error!("Wait error: {}", e));
     }
